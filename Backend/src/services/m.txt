@@ -1,0 +1,251 @@
+const { GoogleGenAI } = require("@google/genai")
+const { z } = require("zod")
+const { zodToJsonSchema } = require("zod-to-json-schema")
+// const puppeteer = require("puppeteer")
+
+const ai = new GoogleGenAI({
+    apiKey: process.env.GOOGLE_GENAI_API_KEY
+})
+
+
+const interviewReportSchema = z.object({
+
+   
+    title: z.string().describe("The title of the job for which the interview report is generated")
+    ,
+    matchScore: z.number().min(0).max(100).describe("A score between 0 and 100 indicating how well the candidate's profile matches the job description")
+    ,
+    technicalQuestions: z.array(z.object({
+        question: z.string().describe("The technical question can be asked in the interview"),
+        intention: z.string().describe("The intention of interviewer behind asking this question"),
+        answer: z.string().describe("A detailed guide explaining how the candidate should answer the question and which points they should cover.")
+    })).min(5).max(8).describe("Technical interview questions specifically generated from the candidate's resume, projects, skills and the job description.")
+    ,
+    behavioralQuestions: z.array(z.object({
+        question: z.string().describe("A behavioral interview question."),
+        intention: z.string().describe("What the interviewer is trying to evaluate through this behavioral question."),
+        answer: z.string().describe("Guidance on how the candidate should answer the question, preferably using examples from their actual experience.")
+    })).min(3).max(5).describe("Behavioral interview questions relevant to the candidate and the job.")
+    ,
+    skillGaps: z.array(z.object({
+        skill: z.string().describe("A specific skill or technology that the candidate is missing or needs to improve."),
+        severity: z.enum([ "low", "medium", "high" ]).describe("The severity of this skill gap, i.e. how important is this skill for the job and how much it can impact the candidate's chances")
+    })).min(3).max(8).describe("Skills required by the job that are missing or insufficient in the candidate's profile.")
+    ,
+    preparationPlan: z.array(z.object({
+        day: z.number().int().min(1).describe("The day number in the preparation plan, starting from 1"),
+        focus: z.string().describe("The main focus of this day in the preparation plan, e.g. data structures, system design, mock interviews etc."),
+        tasks: z.array(z.string()).describe("List of tasks to be done on this day to follow the preparation plan, e.g. read a specific book or article, solve a set of problems, watch a video etc.")
+    })).min(5).max(7).describe("A personalized day-wise preparation plan based on the candidate's weaknesses and the job requirements. The plan should be realistic and achievable within a reasonable time frame, e.g. 2-4 weeks."),
+   
+})
+
+async function generateInterviewReport({ resume, selfDescription, jobDescription }) {
+
+
+    const prompt = `
+    You are an expert technical interviewer and career advisor.
+    Your task is to analyze a candidate's resume, self-description, and target
+    job description and generate a COMPLETE personalized interview preparation
+    report.
+    IMPORTANT:
+    You MUST return ONLY the JSON structure defined by the provided response
+    schema.
+    DO NOT create any additional fields.
+    DO NOT create fields such as:
+    - candidate_info
+    - education_summary
+    - technical_skills
+    - project_review
+    - experience_review
+    - strengths
+    - weaknesses
+    - recommendation
+    - potential_interview_questions
+    Those fields are NOT part of the required output.
+    The ONLY top-level fields allowed are:
+    1. title
+    2. matchScore
+    3. technicalQuestions
+    4. behavioralQuestions
+    5. skillGaps
+    6. preparationPlan
+
+    the following are the details of the candidate and the job description for which you need to generate the interview report:
+                        Resume: ${resume}
+                        Self Description: ${selfDescription}
+                        Job Description: ${jobDescription}
+
+    ========================================
+    REPORT REQUIREMENTS
+    ========================================
+    ### 1. TITLE
+    Use the actual job title from the job description.
+    Example:
+    "Software Engineer - Backend"
+    ### 2. MATCH SCORE
+    Calculate a realistic score from 0 to 100.
+    Consider:
+    - Required technical skills
+    - Preferred technical skills
+    - Programming languages
+    - Backend experience
+    - Database experience
+    - Projects
+    - Internship/work experience
+    - DSA
+    - Education
+    - Missing required technologies
+    Do NOT simply give a high score because the candidate has many skills.
+    For example, if Spring Boot is explicitly required but the candidate has
+    no Spring Boot experience, this should reduce the score.
+    ### 3. TECHNICAL QUESTIONS
+    Generate approximately 5-8 technical questions.
+    Questions should be based on:
+    - The job description
+    - The candidate's resume
+    - The candidate's projects
+    - The candidate's technical skills
+    - The candidate's skill gaps
+    Each question must contain:
+    question:
+    The actual interview question.
+    intention:
+    Why the interviewer is asking this question.
+    answer:
+    Explain what the candidate should discuss when answering.
+    The answer should NOT pretend that the candidate has experience they don't have.
+    For example, if Spring Boot is required but the candidate only knows Node.js,
+    ask questions that test Java/Spring fundamentals and explain how the candidate
+    could approach them honestly.
+    ### 4. BEHAVIORAL QUESTIONS
+    Generate approximately 3-5 behavioral questions.
+    Make them relevant to the candidate's actual:
+    - Projects
+    - Internship
+    - Team experience
+    - Learning ability
+    - Leadership
+    - Challenges
+    - Failures
+    - Adaptability
+    Use the STAR approach where appropriate.
+    ### 5. SKILL GAPS
+    Identify the most important skills the candidate needs to improve for this
+    specific job.
+    Each skill gap must contain:
+    skill:
+    The missing or weak skill.
+    severity:
+    One of:
+    "low"
+    "medium"
+    "high"
+    A required skill such as Spring Boot should normally have higher severity
+    than an optional skill such as Docker if the candidate has no experience.
+    ### 6. PREPARATION PLAN
+    Generate a practical preparation plan.
+    Create approximately 5-7 days.
+    Each day must contain:
+    day:
+    1, 2, 3, etc.
+    focus:
+    The primary topic for that day.
+    tasks:
+    A list of 2-4 specific actionable tasks.
+    The preparation plan must be personalized based on the candidate's actual
+    skill gaps.
+    For this candidate, Spring Boot, Java backend development, SQL, system
+    design, DSA and backend architecture should receive appropriate attention
+    because of the target job.
+    Do not create generic tasks unrelated to the job.
+
+    ========================================
+    QUALITY REQUIREMENTS
+    ========================================
+    - Be specific.
+    - Be realistic.
+    - Do not invent experience.
+    - Use the candidate's actual projects when generating questions.
+    - Use the actual job requirements when identifying skill gaps.
+    - Prioritize required qualifications over preferred qualifications.
+    - Make the preparation plan actionable.
+    - Make the questions interview-level rather than generic textbook questions.
+    - Return ONLY valid JSON.
+    - Do not return Markdown.
+    - Do not wrap JSON in \`\`\`json.
+`
+
+    const response = await ai.models.generateContent({
+        model: "gemini-3.6-flash",
+        contents: prompt,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: zodToJsonSchema(interviewReportSchema),
+        }
+    })
+
+    console.log(response.text)
+
+
+}
+
+
+
+// async function generatePdfFromHtml(htmlContent) {
+//     const browser = await puppeteer.launch()
+//     const page = await browser.newPage();
+//     await page.setContent(htmlContent, { waitUntil: "networkidle0" })
+
+//     const pdfBuffer = await page.pdf({
+//         format: "A4", margin: {
+//             top: "20mm",
+//             bottom: "20mm",
+//             left: "15mm",
+//             right: "15mm"
+//         }
+//     })
+
+//     await browser.close()
+
+//     return pdfBuffer
+// }
+
+// async function generateResumePdf({ resume, selfDescription, jobDescription }) {
+
+//     const resumePdfSchema = z.object({
+//         html: z.string().describe("The HTML content of the resume which can be converted to PDF using any library like puppeteer")
+//     })
+
+//     const prompt = `Generate resume for a candidate with the following details:
+//                         Resume: ${resume}
+//                         Self Description: ${selfDescription}
+//                         Job Description: ${jobDescription}
+
+//                         the response should be a JSON object with a single field "html" which contains the HTML content of the resume which can be converted to PDF using any library like puppeteer.
+//                         The resume should be tailored for the given job description and should highlight the candidate's strengths and relevant experience. The HTML content should be well-formatted and structured, making it easy to read and visually appealing.
+//                         The content of resume should be not sound like it's generated by AI and should be as close as possible to a real human-written resume.
+//                         you can highlight the content using some colors or different font styles but the overall design should be simple and professional.
+//                         The content should be ATS friendly, i.e. it should be easily parsable by ATS systems without losing important information.
+//                         The resume should not be so lengthy, it should ideally be 1-2 pages long when converted to PDF. Focus on quality rather than quantity and make sure to include all the relevant information that can increase the candidate's chances of getting an interview call for the given job description.
+//                     `
+
+//     const response = await ai.models.generateContent({
+//         model: "gemini-3-flash-preview",
+//         contents: prompt,
+//         config: {
+//             responseMimeType: "application/json",
+//             responseSchema: zodToJsonSchema(resumePdfSchema),
+//         }
+//     })
+
+
+//     const jsonContent = JSON.parse(response.text)
+
+//     const pdfBuffer = await generatePdfFromHtml(jsonContent.html)
+
+//     return pdfBuffer
+
+// }
+
+module.exports = generateInterviewReport 
