@@ -252,9 +252,6 @@ Where CrackIT goes next:
 - [ ] Support `.docx` resume uploads (currently PDF only)
 - [ ] Deployment via Vercel (frontend) + Render/Railway (backend)
 
-## License
-
-This project is licensed under the [MIT License](LICENSE).
 
 ---
 
