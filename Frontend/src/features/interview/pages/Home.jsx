@@ -26,8 +26,13 @@ const Home = () => {
     }//added
 
     const handleGenerateReport = async () => {
-        const data = await generateReport({ jobDescription, selfDescription, resumeFile })
-        navigate(`/interview/${data._id}`)
+        try{
+            const data = await generateReport({ jobDescription, selfDescription, resumeFile })
+            navigate(`/interview/${data._id}`)
+        }catch (err) {
+            alert("Couldn't generate your report — please try again in a moment.")
+        }
+        
     }
 
     const handleLogoutClick = async () => {

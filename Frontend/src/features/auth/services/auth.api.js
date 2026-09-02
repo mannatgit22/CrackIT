@@ -2,7 +2,9 @@ import axios from "axios"
 
 
 const api = axios.create({
-    baseURL: "https://crackit-uyhi.onrender.com",
+    baseURL: import.meta.env.DEV
+    ? "http://localhost:3000"
+    : "https://crackit-yhhi.onrender.com",
     withCredentials: true
 })
 
